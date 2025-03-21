@@ -125,7 +125,7 @@ class block_queue{              //阻塞队列类
             }
         }
         bool pop(T &item , int ms_timeout){
-            struct tiemspec t = {0 , 0};
+            struct timespec t = {0 , 0};
             struct timeval now = {0 , 0};
             gettimeofday(&now , NULL);      //获取当前的时间
             m_mutex.lock();

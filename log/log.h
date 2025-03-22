@@ -46,7 +46,7 @@ class Log{                 //log类
             Log::get_instance()->async_write_log();
         }
         bool init(const char *file_name , int close_log , int log_buf_size = 8192 , int split_lines = 5000000 , int max_queue_szie = 0);
-        void write_log(int level , const char &format , ...);
+        void write_log(int level , const char *format , ...);
         void flush(void);
 };
 

@@ -132,3 +132,59 @@ int Utils::setnonblocking(int fd){      //设置文件描述符为非阻塞
     fcntl(fd , F_SETFL , new);
     return old;
 }
+
+void Utils::addfd(int epollfd , int fd , bool one_shot , int TRIGMode){         //向内核事件表中注册读事件
+    epoll_event event;
+    event.data.fd = fd;
+    if(1 == TRIGMode){
+        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP
+    }
+    else{
+        event.events = EPOLLIN | EPOLLRDHUP;
+    }
+    if(one_shot){
+        event.events |= EPOLLONESHOT;
+    }
+    epoll_ctl(epollfd , EPOLL_CTL_ADD , fd , &event);
+    setnonblocking(fd);
+}
+
+void Utils::sig_handler(int sig){       //信号处理函数
+    int save_errno = errno;     //为保证函数的可重入性，保留原来的errno
+    int msg = sig;
+    send(u_pipefd[1] , (char *)&msg , 1 , 0);
+    errno = save_errno;
+}
+
+void Utils::addsig(int sig , void(handler)(int) , bool restart){            //添加信号函数
+    struct sigaction sa;   
+    memset(&sa , '\0' , sizeof(sa));
+    sa.sa_handler = handler;
+    if(restart){
+        sa.sa_flags |= SA_RESTART;      // 设置SA_RESTART标志，表示系统调用中断后自动重启
+    }
+    sigfillset(&sa.sa_mask);        // 阻塞所有信号
+    assert(sigaction(sig , &sa , NULL) != -1);
+}
+
+void Utils::timer_handler(){        //定时处理任务，重新定时以不断触发SIGALRM信号
+    m_timer_lst.tick();
+    alarm(m_TIMESLOT);
+}
+
+void Utils::show_error(int connfd , const char *info){
+    send(connd , info , strlen(info) , 0);
+    close(connfd);
+}
+
+int *Utils::u_pipefd = 0;
+int Utils::u_epollfd = 0;
+
+class Utils;
+
+void cb_func(client_data *user_data){       //一旦触发信号函数则表明定时器时间到了 需关闭连接
+    epoll_ctl(Utils::u_epollfd , EPOLL_CTL_DEL , user_data->sockfd , 0);
+    assert(user_data);
+    close(user_data->sockfd);
+    http_conn::m_user_count--;
+}

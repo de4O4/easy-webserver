@@ -118,4 +118,11 @@ void Log::write_log(int level , const char *format , ...){
         fputs(log_str.c_str() , m_fp);
         m_mutex.unlock();
     }
+    va_end(valst);
+}
+
+void Log::flush(void){
+    m_mutex.lock();
+    fflush(m_fp);       ////强制刷新写入流缓冲区
+    m_mutex.unlock();
 }

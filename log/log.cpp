@@ -17,7 +17,7 @@ Log::~Log(){        //关闭日志文件的文件指针
     }
 }
 
-bool Log::init(cosnt char *file_name , int close_log , int log_buf_size , int split_lines , int max_queue_szie){
+bool Log::init(const char *file_name , int close_log , int log_buf_size , int split_lines , int max_queue_szie){
     if(max_queue_szie >= 1){        //若设置了max_queue_szie 则设置为异步日志
         m_is_async = true;
         m_log_queue = new block_queue<string>(max_queue_szie);      //new后面跟的是block_queue的构造函数

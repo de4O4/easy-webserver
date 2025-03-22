@@ -72,7 +72,7 @@ public:
     }
     bool timewait(pthread_mutex_t *m_mutex , struct timespec t){            //设置超时等待
         int r = 0;
-        r = pthread_cond_timewait(&m_cond , m_mutex , &t);
+        r = pthread_cond_timedwait(&m_cond , m_mutex , &t);
         return r == 0;
     }
     bool signal(){                      //唤醒一个等待条件变量的线程

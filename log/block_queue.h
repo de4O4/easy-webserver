@@ -22,7 +22,7 @@ class block_queue{              //阻塞队列类
         int m_front;              //队头   指向队头前一个位置
         int m_back;               //队尾
     public:
-        block_queue(int max_size == 1000){        //初始化数组默认最大容量为1000
+        block_queue(int max_size = 1000){        //初始化数组默认最大容量为1000
             if(max_size <= 0){
                 exit(-1);
             }

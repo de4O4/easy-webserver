@@ -250,3 +250,165 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text){
     }       
     return NO_REQUEST;          //请求不完整
 }
+
+http_conn::HTTP_CODE http_conn::parse_content(char *text){
+    if(m_read_idx >= (m_content_length + m_checked_idx)){       //判断buffer中是否读取了消息体
+        text[m_content_length] = '\0';      
+        m_string = text;        //POST请求中最后为输入的用户名和密码
+        return GET_REQUEST;
+    }
+    return NO_REQUEST;
+}
+
+http_conn::HTTP_CODE http_conn::process_read(){         //将主从状态机进行封装，对报文的每一行进行循环处理。
+    LINE_STATUS line_status = LINE_OK;
+    m_start_line = m_checked_idx;
+    char *text = 0;
+    while((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status == parse_line()) == LINE_OK)){
+        text = get_line();
+        m_start_line = m_checked_idx;
+        LOG_INFO("%s" , text);
+        http_conn::HTTP_CODE ret;
+        switch (m_check_state)
+        {
+        case CHECK_STATE_REQUESTLINE:       //解析请求行
+        {
+            ret = parse_request_line(text);     
+            if(ret == BAD_REQUEST){
+                return BAD_REQUEST;
+            }
+            break;
+        }
+        case CHECK_STATE_HEADER:            //解析请求头
+        {
+            ret = parse_headers(text);
+            if(ret == BAD_REQUEST){
+                return BAD_REQUEST;
+            }else if(ret == GET_REQUEST){
+                return do_request();        //完整解析POST请求后，跳转到报文响应函数
+            }
+            break;
+        }       
+        case CHECK_STATE_CONTENT:        //解析消息体
+        {
+            ret = parse_content(text);
+            if(ret == GET_REQUEST){
+                return do_request();            //完整解析POST请求后，跳转到报文响应函数
+            }
+            line_status = LINE_OPEN;
+            break;
+        }          
+        default:
+            return INTERNAL_ERROR;
+        }
+    }
+    return NO_REQUEST;
+}
+
+http_conn::HTTP_CODE http_conn::do_request(){      // 将网站根目录和url文件拼接
+    strcpy(m_real_file , doc_root);          //将初始化的m_real_file赋值为网站根目录
+    int len = strlen(doc_root);
+    const char *p = strchr(m_url , '/');        //找到m_url中/的位置
+    if(cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3')){           //实现登录和注册校验 POST方式
+        char flag = m_url[1];       //根据标志判断是登录检测还是注册检测
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/");
+        strcat(m_url_real , m_url + 2);
+        strncpy(m_real_file + len , m_url_real , FILENAME_LEN - len - 1);           //将请求的文件拼接至网站根目录中
+        free(m_url_real);
+
+        char name[100] , password[100];
+        int i;
+        for(i = 5 ; m_string[i] != '&' ; i++){      //提取用户名
+            name[i-5] = m_string[i];
+        }
+        name[i-5] = '\0';
+
+        int j = 0;
+        for(i = i + 10 ; m_string[i] != '\0' ; j++){        //提取密码
+            password[j] = m_string[i];
+        }
+        password[j] = '\0';
+        
+        if(*(p + 1) == 3){      //如果是注册，先检测数据库中是否有重名的  没有重名的，进行增加数据
+            char *sql_insert = (char *)malloc(sizeof(char) * 200);
+            strcpy(sql_insert , "INSERT INTO user(username , passwd) VALUES(");
+            strcat(sql_insert , "'");
+            strcat(sql_insert , name);
+            strcat(sql_insert , "', '");
+            strcat(sql_insert , password);
+            strcat(sql_insert , "')");
+            if(users.find(name) == users.end()){
+                m_lock.lock();
+                int res = mysql_query(mysql , sql_insert);      //进行sql查询、
+                users.insert(pair<string , string>(name , password));
+                m_lock.unlock();
+                if(!res){
+                    strcpy(m_url , "/log.html");
+                }else{
+                    strcpy(m_url , "/registerError.html");
+                }
+            }else{
+                strcpy(m_url , "/registerError.html");
+            }
+        }else if(*(p + 1) == '2'){          //如果是登录，直接判断  浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
+            if(users.find(name) != users.end() && users[name] == password){
+                strcpy(m_url , "/welcome.html");
+            }else{
+                strcpy(m_url , "/logError.html");
+            }
+        }
+    }
+    if(*(p + 1) == '0'){        //如果请求资源为/0，表示跳转注册界面
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/register.html");
+        strncpy(m_real_file + len , m_url_real , strlen(m_url_real));       //将网站目录和/register.html进行拼接，更新到m_real_file中
+        free(m_url_real);
+    }else if(*(p + 1) == '1'){      // 如果请求资源为/1，表示跳转登录界面
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/log.html");
+        strncpy(m_real_file + len , m_url_real , strlen(m_url_real));       //将网站目录和/register.html进行拼接，更新到m_real_file中
+        free(m_url_real);      
+    }else if(*(p + 1) == '5'){
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/picture.html");
+        strncpy(m_real_file + len , m_url_real , strlen(m_url_real));       //将网站目录和/register.html进行拼接，更新到m_real_file中
+        free(m_url_real);
+    }else if(*(p + 1) == '6'){
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/video.html");
+        strncpy(m_real_file + len , m_url_real , strlen(m_url_real));       //将网站目录和/register.html进行拼接，更新到m_real_file中
+        free(m_url_real);
+    }else if(*(p + 1) == '7'){
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real , "/fans.html");
+        strncpy(m_real_file + len , m_url_real , strlen(m_url_real));       //将网站目录和/register.html进行拼接，更新到m_real_file中
+        free(m_url_real);
+    }else{
+        strncpy(m_real_file + len , m_url , FILENAME_LEN - len - 1);        //如果以上均不符合，即不是登录和注册，直接将url与网站目录拼接
+    }
+    if(stat(m_real_file , &m_file_stat) < 0){       //通过stat获取请求资源文件信息，成功则将信息更新到m_file_stat结构体
+        return NO_REQUEST;          //失败返回NO_RESOURCE状态，表示资源不存在
+    }
+    if(!(m_file_stat.st_mode)){     //判断文件的权限，是否可读，不可读则返回FORBIDDEN_REQUEST状态
+        return FORBIDDEN_REQUEST;
+    }
+    if(S_ISDIR(m_file_stat.st_mode)){           //判断文件类型，如果是目录，则返回BAD_REQUEST，表示请求报文有误
+        return BAD_REQUEST;
+    }
+    int fd = open(m_real_file , O_RDONLY);          //以只读方式获取文件描述符，通过mmap将该文件映射到内存中
+    m_file_address = (char *)mmap(0 , m_file_stat.st_size , PROT_READ , MAP_PRIVATE , fd , 0);
+    close(fd);
+    return FILE_REQUEST;             //表示请求文件存在，且可以访问
+}       
+
+void http_conn::unmap(){
+    if(m_file_address){
+        munmap(m_file_address , m_file_stat.st_size);
+        m_file_address = 0;
+    }
+}
+
+bool http_conn::write(){
+    
+}

@@ -126,7 +126,7 @@ class http_conn{            //http连接类
             return m_read_buf + m_start_line;
         }
         LINE_STATUS parse_line();       //从状态机读取一行，分析是请求报文的哪一部分
-        void umap();
+        void unmap();
         bool add_response(const char *format , ...);
         bool add_content(const char *content);
         bool add_status_line(int status , const char *title);

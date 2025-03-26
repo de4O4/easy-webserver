@@ -4,7 +4,7 @@
 #include<iostream>
 #include<stdlib.h>
 #include<pthread.h>
-#include<time.h>
+#include<sys/time.h>
 #include "../lock/locker.h"
 using namespace std;
 

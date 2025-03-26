@@ -3,7 +3,7 @@
 
 sort_timer_lst::sort_timer_lst(){
     head = NULL;
-    tail = NULL
+    tail = NULL;
 }
 
 sort_timer_lst::~sort_timer_lst(){
@@ -42,12 +42,12 @@ void sort_timer_lst::adjust_timer(util_timer *timer){
     }    
     if(timer == head){      //若传入的定时器为头部 则将其拿出
         head = head->next;
-        head-<prev = NULL;
-        timr->next = NULL;
+        head->prev = NULL;
+        timer->next = NULL;
         add_timer(timer , head);
     }
     else{       //当前定时器即不在尾部也不在头部
-        timer->prev->next = tiemr->next;
+        timer->prev->next = timer->next;
         timer->next->prev = timer->prev;
         add_timer(timer , head);
     }
@@ -64,20 +64,20 @@ void sort_timer_lst::del_timer(util_timer *timer){
         return;
     }
     if(timer == head){      //当前定时器为链表头部
-        head = head-<next;
+        head = head->next;
         head->prev = NULL;
         delete timer;
         return;
     }
     if(timer == tail){      //当前定时器在链表尾部
         tail = tail->prev;
-        tali->next = NULL;
+        tail->next = NULL;
         delete timer;
         return;
     }
     timer->prev->prev = timer->next;
-    timer->next->prev = tiemr->prev;
-    delete tiemr;
+    timer->next->prev = timer->prev;
+    delete timer;
 }
 
 void sort_timer_lst::tick(){
@@ -105,17 +105,17 @@ void sort_timer_lst::add_timer(util_timer *timer , util_timer *lst_head){
     util_timer *tmp = prev->next;       //指向链表头部下一个定时器
     while(tmp){
         if(timer->expire < tmp->expire){    //当前定时器过期时间小于指向的定时器 将其插入两者中间
-            prev->next = tiemr;
+            prev->next = timer;
             timer->next = tmp;
-            tmp->prev = tail
-            tiemr->prev = prev;
+            tmp->prev = tail;
+            timer->prev = prev;
             break;
         }
         prev = tmp;             //不断遍历 指向下个定时器
         tmp = tmp->next;
     }
     if(!tmp){   //当前链表只有头节点一个 将其插入头节点之后
-        prev->next = tiemr;
+        prev->next = timer;
         timer->prev = prev;
         timer->next = NULL;
         tail = timer;
@@ -123,13 +123,13 @@ void sort_timer_lst::add_timer(util_timer *timer , util_timer *lst_head){
 }
 
 void Utils::init(int timeslot){
-    m_TIMESLOT = tiemrslot;         //设置定时时间
+    m_TIMESLOT = timeslot;         //设置定时时间
 }
 
 int Utils::setnonblocking(int fd){      //设置文件描述符为非阻塞
     int old = fcntl(fd , F_GETFL);      //成功返回当前文件描述符的标志
-    int new = old | O_NONBLOCK;
-    fcntl(fd , F_SETFL , new);
+    int newop = old | O_NONBLOCK;
+    fcntl(fd , F_SETFL , newop);
     return old;
 }
 
@@ -137,7 +137,7 @@ void Utils::addfd(int epollfd , int fd , bool one_shot , int TRIGMode){         
     epoll_event event;
     event.data.fd = fd;
     if(1 == TRIGMode){
-        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP
+        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
     }
     else{
         event.events = EPOLLIN | EPOLLRDHUP;
@@ -173,7 +173,7 @@ void Utils::timer_handler(){        //定时处理任务，重新定时以不断
 }
 
 void Utils::show_error(int connfd , const char *info){
-    send(connd , info , strlen(info) , 0);
+    send(connfd , info , strlen(info) , 0);
     close(connfd);
 }
 

@@ -544,6 +544,29 @@ bool http_conn::write(){
             unmap();            //如果发送失败，但不是缓冲区问题，取消映射
             return false;
         }
-
+        bytes_to_send -= temp;          //更新已发送字节数
+        if(bytes_to_send <= 0){             //判断条件，数据已全部发送完
+            unmap();
+            modfd(m_epollfd , m_sockfd , EPOLLIN , m_TRIGMode);
+            if(m_linger){       //浏览器的请求为长连接
+                init();         //重新初始化HTTP对象
+                return true;
+            }else{          
+                return false;
+            }
+        }
     }
+}
+
+void http_conn::process(){
+    HTTP_CODE read_ret = process_read();
+    if(read_ret == NO_REQUEST){
+        modfd(m_epollfd , m_sockfd , EPOLLIN , m_TRIGMode);
+        return;
+    }
+    bool write_ret = process_write(read_ret);
+    if(!write_ret){
+        close_conn();
+    }
+    modfd(m_epollfd , m_sockfd , EPOLLOUT , m_TRIGMode);
 }

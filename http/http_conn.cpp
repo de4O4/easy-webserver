@@ -409,6 +409,141 @@ void http_conn::unmap(){
     }
 }
 
+bool http_conn::add_response(const char *format , ...){
+    if(m_write_idx >= WRITE_BUFFER_SIZE){           //如果写入内容超出m_write_buf大小则报错
+        return false;
+    }
+    va_list arg_list;
+    va_start(arg_list , format);         //将变量arg_list初始化为传入参数
+    int len = vsnprintf(m_write_buf + m_write_idx , WRITE_BUFFER_SIZE - 1 - m_write_idx , format , arg_list);           //将数据format从可变参数列表写入缓冲区写，返回写入数据的长度
+    if(len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx)){       //如果写入的数据长度超过缓冲区剩余空间，则报错
+        va_end(arg_list);
+        return false;
+    }
+    m_write_idx += len;
+    va_end(arg_list);
+    LOG_INFO("request:%s" , m_write_buf);
+}
+
+bool http_conn::add_status_line(int status , const char *title){            //添加状态行
+    return add_response("%s %d %s\r\n" , "HTTP/1.1" , status , title);
+}
+
+bool http_conn::add_headers(int content_len){           
+    return add_content_length(content_len) && add_linger() && add_blank_line();       //添加消息报头，具体的添加文本长度、连接状态和空行
+}
+
+bool http_conn::add_content_length(int content_len){        //添加Content-Length，表示响应报文的长度
+    return add_response("Content-Length:%d\r\n" , content_len);
+}
+
+bool http_conn::add_content_type(){                     //添加文本类型，这里是html
+    return add_response("Content-Type:%s" , "text/html");
+}
+
+bool http_conn::add_linger(){                   //添加连接状态，通知浏览器端是保持连接还是关闭
+    return add_response("Connection:%s\r\n" , (m_linger == true) ? "keep-alive" : "close");
+}
+
+bool http_conn::add_blank_line(){
+    return add_response("%s" , "\r\n");
+}
+
+bool http_conn::add_content(const char *content){               //添加文本content
+    return add_response("%s" , content);
+}
+
+bool http_conn::process_write(HTTP_CODE ret){           //完成响应报文
+    switch (ret){
+        case INTERNAL_ERROR:            //内部错误，500
+        {
+            add_status_line(500 , error_500_title);     //状态行
+            add_headers(strlen(error_500_form));            //消息报头
+            if(!add_content(error_500_form)){
+                return false;
+            }
+            break;
+        }
+        case BAD_REQUEST:               //报文语法有误，404
+        {
+            add_status_line(404 , error_404_title);
+            add_headers(strlen(error_404_form));
+            if(!add_content(error_404_form)){
+                return false;
+            }
+            break;
+        }
+        case FORBIDDEN_REQUEST:              //资源没有访问权限，403
+        {
+            add_status_line(403 , error_403_title);
+            add_headers(strlen(error_403_form));
+            if(!add_content(error_403_form)){
+                return false;
+            }
+            break;
+        }
+        case FILE_REQUEST:          //文件存在，200
+        {
+            add_status_line(200 , ok_200_title);
+            if(m_file_stat.st_size != 0){               //如果请求的资源存在
+                add_headers(m_file_stat.st_size);
+                m_iv[0].iov_base = m_write_buf;         //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
+                m_iv[0].iov_len = m_write_idx;
+                m_iv[1].iov_base = m_file_address;          //第二个iovec指针指向mmap返回的文件指针，长度指向文件大小
+                m_iv[1].iov_len = m_file_stat.st_size;
+                m_iv_count = 2;
+                bytes_to_send = m_write_idx + m_file_stat.st_size;      //发送的全部数据为响应报文头部信息和文件大小
+                return true;
+            }else{
+                const char *ok_string = "<html><body></body></html>";           //如果请求的资源大小为0，则返回空白html文件
+                add_headers(strlen(ok_string));
+                if(!add_content(ok_string)){
+                    return false;
+                }
+            }
+        }
+        default:
+        {
+            return false;
+        }     
+    }
+    m_iv[0].iov_base = m_write_buf;
+    m_iv[0].iov_len = m_write_idx;
+    m_iv_count = 1;
+    bytes_to_send = m_write_idx;
+    return true;
+}
+
 bool http_conn::write(){
-    
+    int temp = 0;
+    int newadd = 0;
+    if(bytes_to_send == 0){     //若要发送的数据长度为0  表示响应报文为空 
+        modfd(m_epollfd , m_sockfd , EPOLLIN , m_TRIGMode);
+        init();
+        return true;
+    }
+    while(1){
+        temp =  writev(m_sockfd , m_iv , m_iv_count);
+        if(temp > 0){
+            bytes_have_send += temp;        //更新已发送字节
+            newadd = bytes_have_send - m_write_idx;         //偏移文件iovec的指针
+        }
+        if(temp < 0){
+            if(errno == EAGAIN){            //判断缓冲区是否满了
+                if(bytes_have_send >= m_iv[0].iov_len){          //第一个iovec头部信息的数据已发送完，发送第二个iovec数据
+                    m_iv[0].iov_len = 0;            //不再继续发送头部信息
+                    m_iv[1].iov_base = m_file_address + newadd;
+                    m_iv[1].iov_len = bytes_to_send;
+                }else{          //继续发送第一个iovec头部信息的数据
+                    m_iv[0].iov_base = m_write_buf + bytes_to_send;
+                    m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+                }
+                modfd(m_epollfd , m_sockfd , EPOLLOUT , m_TRIGMode);
+                return true;
+            }
+            unmap();            //如果发送失败，但不是缓冲区问题，取消映射
+            return false;
+        }
+
+    }
 }

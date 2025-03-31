@@ -155,16 +155,16 @@ bool WebServer::dealcliendata(){
     socklen_t client_addrlength = sizeof(client_address);
     if(0 == m_LISTENTrigmode){
         int connfd = accept(m_listenfd , (struct sockaddr *)&client_address , &client_addrlength);
-        if(connfd < 0){
+        if(connfd < 0){             //连接失败
             LOG_ERROR("%s: errno is:%d" , "accept error" , errno);
             return false;
         }
-        if(http_conn::m_user_count >= MAX_FD){
+        if(http_conn::m_user_count >= MAX_FD){          //当前连接以达到最大值
             utils.show_error(connfd , "Internal server busy!");
             LOG_ERROR("%s " , "Internal server busy");
             return false;
         }
-        timer(connfd , client_address);
+        timer(connfd , client_address);             //设置定时器
     }else{
         while(1){
             int connfd = accept(m_listenfd , (struct sockaddr *)&client_address , &client_addrlength);
@@ -182,4 +182,129 @@ bool WebServer::dealcliendata(){
         return false;
     }
     return true;
+}
+
+bool WebServer::dealwithsignal(bool &timeout , bool &stop_server){          //处理信号
+    int ret = 0;
+    int sig;
+    char signals[1024];
+    ret = recv(m_pipefd[0] , signals , sizeof(signals) , 0);        //向管道读端写入输入
+    if(ret == -1){
+        return false;
+    }else if(ret == 0){
+        return false;
+    }else{
+        for(int i = 0 ; i < ret ; i++){
+            switch(signals[i]){
+                case SIGALRM:           //超时
+                {
+                    timeout = true;
+                    break;
+                }
+                case SIGTERM:           //中断
+                {
+                    stop_server = true;
+                    break;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+void WebServer::dealwithread(int sockfd){           //处理读事件
+    util_timer *timer = users_timer[sockfd].timer;
+    if(1 == m_actormodel){          //reactor模式
+        if(timer){
+            adjust_timer(timer);        //有读事件则更新定时器
+        }
+        m_pool->append(users + sockfd , 0);         //将读事件加入到线程池的任务队列中
+        while(1){
+            if(1 == users[sockfd].improv){
+                if(1 == users[sockfd].timer_flag){
+                    deal_timer(timer , sockfd);
+                    users[sockfd].timer_flag = 0;
+                }
+                users[sockfd].improv = 0;
+                break;               
+            }
+        }
+    }else{              //proactor模式
+        if(users[sockfd].read_once()){
+            LOG_INFO("deal with the client (%s)" , inet_ntoa(users[sockfd].get_address()->sin_addr));
+            m_pool->append_p(users + sockfd);           //将读事件加入线程池的任务队列中
+            if(timer){
+                adjust_timer(timer);        
+            }
+        }else{
+            deal_timer(timer , sockfd);
+        }
+    }
+}
+
+void WebServer::dealwithwrite(int sockfd){          //处理写事件
+    util_timer *timer = users_timer[sockfd].timer;
+    if(1 == m_actormodel){          //reactor模式
+        if(timer){
+            adjust_timer(timer);
+        }
+        m_pool->append(users + sockfd , 1);         //将写事件加入线程池的任务队列
+        while(1){
+            if(1 == users[sockfd].improv){
+                if(1 == users[sockfd].timer_flag){
+                    deal_timer(timer , sockfd);
+                    users[sockfd].timer_flag == 0;
+                }
+                users[sockfd].improv = 0;
+                break;
+            }
+        }
+    }else{                  //proactor模式
+        if(users[sockfd].write()){
+            LOG_INFO("send data to the client (%S)" , inet_ntoa(users[sockfd].get_address()->sin_addr));
+            if(timer){
+                adjust_timer(timer);           
+            }
+        }else{
+            deal_timer(timer , sockfd);         
+        }
+    }
+}
+
+void WebServer::eventLoop(){
+    bool timeout = false;
+    bool stop_server = false;
+    while(!stop_server){            //未触发sinterm信号
+        int number = epoll_wait(m_epollfd , events , MAX_EVENT_NUMBER , -1);
+        if(number < 0 && errno != EINTR){
+            LOG_ERROR("%s " , "epoll failure");
+            break;
+        }
+        for(int i = 0 ; i < number ; i++){
+            int sockfd = events[i].data.fd;
+            if(sockfd == m_listenfd){           //新连接
+                bool flag = dealcliendata();
+                if(flag == false){
+                    continue;
+                }
+            }else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){            //服务器端关闭
+                util_timer *timer = users_timer[sockfd].timer;
+                deal_timer(timer , sockfd);
+            }else if(sockfd == m_pipefd[0] && (events[i].events & EPOLLIN)){            //若是信号到达
+                bool flag = dealwithsignal(timeout , stop_server);
+                if(flag == false){
+                    LOG_ERROR("%s " , "dealsignal failure");
+                }
+            }else if(events[i].events & EPOLLIN){           //处理读事件
+                dealwithread(sockfd);
+            }else if(events[i].events & EPOLLOUT){
+                dealwithwrite(sockfd);
+            }
+        }
+        if(timeout){            //触发定时事件
+            utils.timer_handler();
+            LOG_INFO("%s" , "timer tick");
+            timeout = false;
+        }
+    }
 }

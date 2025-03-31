@@ -53,7 +53,7 @@ class WebServer{
         void log_write();
         void trig_mode();
         void eventListen();
-        void enentLoop();
+        void eventLoop();
         void timer(int connfd , struct sockaddr_in client_address);
         void adjust_timer(util_timer *timer);
         void deal_timer(util_timer *timer , int sockfd);

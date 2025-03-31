@@ -31,7 +31,7 @@ class WebServer{
         http_conn *users;
         connection_pool *m_connPool;
         string m_user;              //登录数据库的用户名
-        string m_passsWord;         //登录数据库密码
+        string m_passWord;         //登录数据库密码
         string m_databaseName;      //数据库名
         int m_sql_num;              //数据库连接池最大连接数
         threadpool<http_conn> *m_pool;      //线程池
@@ -42,7 +42,7 @@ class WebServer{
         int m_TRIGMode;
         int m_LISTENTrigmode;
         int m_CONNTrigmode;
-        client_data *user_timer;
+        client_data *users_timer;
         Utils utils;
 
         WebServer();

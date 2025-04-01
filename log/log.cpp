@@ -38,12 +38,12 @@ bool Log::init(const char *file_name , int close_log , int log_buf_size , int sp
     char log_full_name[256] = {0};
 
     if(p == NULL){      //当日志文件不存在 则创建一个日志文件
-        snprintf(log_full_name , 255 , "%s%d_%02d_%02d_%s" , dir_name , my_ym.tm_year + 1900 , my_ym.tm_mon + 1 , my_ym.tm_mday , file_name);       //格式化log_full_name
+        snprintf(log_full_name , 255 , "%d_%02d_%02d_%s" , my_ym.tm_year + 1900 , my_ym.tm_mon + 1 , my_ym.tm_mday , file_name);       //格式化log_full_name
     }
     else{
         strcpy(log_full_name , p+1);        //复制文件名部分（去掉路径部分）到 log_name 中。
         strncpy(dir_name , file_name , p - file_name + 1);      //将路径部分复制到 dir_name 中
-        snprintf(log_full_name , 255 , "%s%d_%02d_%02d_%s" , dir_name , my_ym.tm_year + 1900 , my_ym.tm_mon + 1 , my_ym.tm_mday , file_name); 
+        snprintf(log_full_name , 255 , "%s%d_%02d_%02d_%s" , dir_name , my_ym.tm_year + 1900 , my_ym.tm_mon + 1 , my_ym.tm_mday , log_name); 
     }
     m_today = my_ym.tm_mday;
     m_fp = fopen(log_full_name , "a");
@@ -95,6 +95,11 @@ void Log::write_log(int level , const char *format , ...){
             snprintf(new_log , 255 , "%s%s%s.%lld" , dir_name , tail , log_name , m_cout / m_split_lines);
         }
         m_fp = fopen(new_log , "a");
+        if (m_fp == NULL) {
+            // 如果打开文件失败，输出错误信息并返回
+            perror("Error opening file");
+            exit(1);  // 返回错误代码
+        }
     }
     m_mutex.unlock();
     va_list valst;
@@ -103,7 +108,7 @@ void Log::write_log(int level , const char *format , ...){
     string log_str;
     m_mutex.lock();
 
-    int n = snprintf(m_buf , 48 , "%d-%02d-%02d %02d:%02d:%02d.%06ld %s " , my_tm.tm_yday + 1900 , my_tm.tm_mon + 1 , my_tm.tm_mday , my_tm.tm_hour , my_tm.tm_min , my_tm.tm_sec , now.tv_usec , s);       //写入具体的时间格式
+    int n = snprintf(m_buf , 48 , "%d-%02d-%02d %02d:%02d:%02d.%06ld %s " , my_tm.tm_year + 1900 , my_tm.tm_mon + 1 , my_tm.tm_mday , my_tm.tm_hour , my_tm.tm_min , my_tm.tm_sec , now.tv_usec , s);       //写入具体的时间格式
     int m = vsnprintf(m_buf + n , m_log_buf_size - n -1 , format , valst);
     m_buf[n + m] = '\n';        //将换行符添加到缓冲区，表示一行日志的结束
     m_buf[n + m + 1] = '\0';        //追加字符串结束符，确保缓冲区内容是一个有效的 C 字符串

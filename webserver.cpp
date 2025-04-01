@@ -104,7 +104,7 @@ void WebServer::eventListen(){      //开始进行创建套接字等一系类工
     utils.init(TIMESLOT);       //设置定时时间
 
     epoll_event events[MAX_EVENT_NUMBER];
-    m_epollfd = epoll_create1(5);           //创建epoll节点
+    m_epollfd = epoll_create(5);           //创建epoll节点
     assert(m_epollfd != -1);
 
     utils.addfd(m_epollfd , m_listenfd , false , m_LISTENTrigmode);

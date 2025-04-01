@@ -62,8 +62,8 @@ class http_conn{            //http连接类
             LINE_BAD,
             LINE_OPEN
         };
-        http_conn();
-        ~http_conn();
+        http_conn() {}
+        ~http_conn() {}
 
         void init(int sockfd , const sockaddr_in &addr , char * , int , int , string user , string passwd , string sqlname);
         void close_conn(bool real_close = true);

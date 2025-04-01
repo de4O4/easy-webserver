@@ -64,6 +64,12 @@ MYSQL *connection_pool::GetConnection(){        //从数据库连接池中获取
     return con;
 }
 
+connection_pool *connection_pool::GetInstance()			//单例模式
+{
+	static connection_pool connPool;
+	return &connPool;
+}
+
 bool connection_pool::ReleaseConnection(MYSQL *con){        //释放一个数据库连接
     if(con == NULL){
         return false;

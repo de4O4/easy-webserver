@@ -63,7 +63,7 @@ bool threadpool<T>::append(T *request , int state){         //将任务添加至
         m_queuelocker.unlock();
         return false;
     }
-    request->state = state;
+    request->m_state = state;
     m_workqueue.push_back(request);
     m_queuelocker.unlock();
     m_queuestat.post();         //有任务放入任务队列 则信号量++

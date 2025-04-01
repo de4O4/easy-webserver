@@ -107,7 +107,7 @@ class block_queue{              //阻塞队列类
                 return false;
             }
             m_back = (m_back+1) % m_max_size;       //更新插入元素的位置 既队尾位置
-            m_array[back] = item;
+            m_array[m_back] = item;
             m_size++;
             m_cond.broadcast();     //通知所有等待线程来处理
             m_mutex.unlock();
